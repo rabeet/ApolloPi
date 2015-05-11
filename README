@@ -1,0 +1,18 @@
+This is the public repository for the Apollo Pi project. The project was for an embedded systems programming course, but will continue to be improved and expanded for the forseeable future.
+
+A report has been written for the project and may be used as a form of documentation for the time being, but formal documentation will be created eventually. Still, the report has a great deal of detailed information about the Apollo Pi project.
+
+The project may be compiled directly on a Raspberry Pi, but a cross-compiler is strongly recommended. A premade cross-compiler, for x86 Ubuntu,  with all required dependencies (except QP) can be downloaded at:
+
+http://db.tt/VDchtiIs
+
+A precompiled QP framework can be downloaded at:
+
+http://db.tt/sgTTzYiw
+
+The appropriate QPCPP and PATH environment variables are needed to compile the project. PATH should be updated to contain the bin sub-directory in the cross-compiler directory, and QPCPP should be the absolute path to the root directory of the unzipped qpcpp.tar.gz.
+
+The project compiles to a single executable using make. The executable will be placed in the bin directory. The Makefile currently has one rule, all, which compiles the source files to a single exectuable. Feel free to make a more advance Makefile.
+
+After compiling, it can be uploaded to the Raspberry Pi using scp (secure copy). The executable must be run as root so the server can bind to port 80 and so the WiringPi library can be used.
+

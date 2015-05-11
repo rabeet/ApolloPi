@@ -1,0 +1,314 @@
+.console-wrapper {
+    padding-top: 0.4em;
+    background: #252b30;
+    position: fixed;
+	bottom:0px;
+    left: 0px;
+    width: 100%;
+    z-index: 100;
+	height:30%;
+}
+.console-wrapper:before {
+    content:"";
+    display: block;
+    border-top: 1px solid #111417;
+}
+.console-wrapper h3 {
+    margin-top: 0.66667em;
+    margin-bottom: 0.4em;
+    padding-left: 20px;
+}
+.console {
+    background: #191d20;
+    overflow-y: fixed;
+    padding: 10px 20px;
+	bottom:0;
+}
+.mainconsole {
+    background: #191d20;
+    overflow-y: auto;
+    overflow-x: fixed;
+    padding: 10px 20px;
+    height: 62%;
+	position:auto;
+}
+
+#console {
+    padding:10px;
+    position:absolute;
+    bottom:0px;
+	z-index:90;
+	height:40%;
+	
+}
+#context {
+    left: 0px;
+    z-index: 100;
+    background-color:transparent;
+    border: 1px dashed grey;
+    width:99%;
+	left: 5px;
+	bottom:5px;
+	z-index:100;
+	color: grey;
+	position:fixed;
+}
+#cconsole {
+    margin-top:0px;
+    text-align:left;
+    padding:0px;
+    font-size: 0.7em;
+}
+.action-wrapper {
+    padding-top: 0.4em;
+    background: #252b30;
+    position: fixed;
+    left: 0px;
+    width: 100%;
+    z-index: 100;
+	height:70%;
+	top: 0px;
+}
+.action-wrapper:before {
+    content:"";
+    display: block;
+    border-top: 1px solid #111417;
+}
+.action-wrapper h3 {
+    margin-top: 0.66667em;
+    margin-bottom: 0.4em;
+    padding-left: 20px;
+}
+.actionB {
+    background: #191d20;
+    max-height:100%;
+    overflow-y: fixed;
+    padding: 0px 0px;
+    width: 100%;
+    height: 100%;
+	
+    border-bottom: 1px solid #111417;
+}
+#actionbuttons {
+    margin-top:0px;
+    text-align:left;
+    padding:0px;
+    font-size: 0.7em;
+}
+body, h1, h2, h3, p, td, quote, small, form, input, ul, li, ol, label {
+    margin:0px;
+    padding:0px;
+    font-family:Arial, Helvetica, sans-serif;
+}
+body {
+    margin-top:20px;
+    color:#51555C;
+    font-size:13px;
+    background-color:#191d20;
+    text-align:center;
+}
+.clear {
+    clear:both;
+}
+
+#rounded {
+    width:1500px;
+    margin:20px auto;
+    text-align:left;
+}
+.container {
+    background-color:#FFFFFF;
+    padding:10px 10px 10px 10px;
+}
+h1 {
+    font-size:28px;
+    font-weight:bold;
+    font-family:"Trebuchet MS", Arial, Helvetica, sans-serif;
+}
+h2 {
+    font-weight:normal;
+    font-size:20px;
+    color:#999999;
+}
+ul {
+    margin:30px 0px;
+}
+li {
+    list-style:none;
+    display:block;
+    float:left;
+    width:80px;
+}
+li a, li a:visited {
+    padding:5px 10px;
+    text-align:center;
+    background-color:#000033;
+    color:white;
+    -khtml-border-radius: 5px;
+    -webkit-border-radius: 5px;
+    border-radius:5px;
+    display:block;
+    margin-right:10px;
+}
+li a:hover {
+    background-color:#666666;
+    text-decoration:none;
+}
+#pageContent {
+    margin-top:20px;
+    border:1px dashed #cccccc;
+    padding:10px;
+    -moz-border-radius: 5px;
+    -khtml-border-radius: 5px;
+    -webkit-border-radius: 5px;
+    border-radius: 5px;
+}
+#loading {
+	position: absolute;
+	right:5px;
+	bottom:5px;
+    visibility:hidden;
+}
+.videoAndbuttons {
+    height:80%;
+    width:50%;
+    display:inline-block;
+    margin:10px;
+	position: absolute;
+	left:25%;
+	overflow-y: fixed;
+	overflow-x: fixed;
+	border: 1px solid red;
+	padding: 10px;
+	display: table-cell; 
+	vertical-align: middle;
+}
+
+.cam {
+	clear:both;
+	width:70%;
+	position:static;
+	bottom:25%;
+	float:bottom;
+	-webkit-transform: rotate(180deg);
+	-moz-transform: rotate(180deg);
+	filter: progid:DXImageTransform.Microsoft.BasicImage(rotation=2);
+}
+
+#wifi {
+	right:0;
+	position: absolute;
+	padding: 0 10px;
+	color:white;
+	font-size: 1.2em;
+}
+
+
+.fwdButton {
+    width:319px;
+    height:64px;
+    display:block;
+    background-image:url(img/FORWARD.png);
+    background-position: top;
+	position:absolute;
+	top:0;
+	left:66px;
+}
+.fwdButton:hover {
+    width:319px;
+    background-position: 0 -64px;
+    height:64px;
+    background-image:url(img/FORWARD.png) no repeat;
+}
+.fwdButton:active {
+    width:319px;
+    background-position: 0 -128px;
+    height: 64px;
+}
+
+.backButton {
+    width:319px;
+    height:64px;
+    display:block;
+    background-image:url(img/BACKWARD.png);
+    background-position: top;
+	position:absolute;
+	bottom:0;
+	left:66px;
+}
+.backButton:hover {
+    width:319px;
+    background-position: 0 -64px;
+    height:64px;
+    background-image:url(img/BACKWARD.png) no repeat;
+}
+.backButton:active {
+    width:319px;
+    background-position: 0 -128px;
+    height: 64px;
+}
+
+.leftButton {
+    width:64px;
+    height:240px;
+    display:block;
+    background-image:url(img/LEFT.png);
+    background-position: left;
+	position:absolute;
+	bottom: 63px;
+	left:0;
+}
+.leftButton:hover {
+    width:64;
+    background-position: 128px 0;
+    height:240px;
+    background-image:url(img/LEFT.png) no repeat;
+}
+.leftButton:active {
+    width:64px;
+    background-position: 64px -0;
+    height: 240px;
+}
+.rightButton {
+    width:64px;
+    height:240px;
+    display:block;
+    background-image:url(img/RIGHT.png);
+    background-position: left;
+	position:absolute;
+	bottom: 63px;
+	right:0;
+}
+.rightButton:hover {
+    width:64;
+    background-position: 128px 0;
+    height:240px;
+    background-image:url(img/RIGHT.png) no repeat;
+}
+.rightButton:active {
+    width:64px;
+    background-position: 64px -0;
+    height: 240px;
+}
+
+b {
+	height: 20px;
+    background: #ccc;
+    cursor: pointer;
+    border-top: solid 2px #eaeaea;
+    border-left: solid 2px #eaeaea;
+    border-bottom: solid 2px #777;
+    border-right: solid 2px #777;
+    padding: 5px 5px;
+    }
+
+b.down {
+    background: #bbb;
+    border-top: solid 2px #777;
+    border-left: solid 2px #777;
+    border-bottom:solid 2px  #eaeaea;
+    border-right: solid 2px #eaeaea;
+    }
+.demo {
+    color:#FFFFFF;
+}

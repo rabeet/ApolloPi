@@ -1,0 +1,1389 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model version="2.2.03">
+ <framework name="qpcpp"/>
+ <package name="Core" stereotype="0x04" namespace="ApolloPi::">
+  <class name="WebSocketServer" superclass="qpcpp::QActive">
+   <documentation>This Active Object communicates with the operator (client), sending updates from the devices and receiving commands from the operator.
+
+</documentation>
+   <attribute name="socket_fd_" type="int" visibility="0x02" properties="0x00">
+    <documentation>This is the file descriptor that represents the listening (passive) socket. When a client tries to connect, a SIGIO signal is handled via accept_handler(). From the accept handler an AcceptEvt is posted to the server</documentation>
+   </attribute>
+   <attribute name="client_fd_" type="int" visibility="0x02" properties="0x00"/>
+   <attribute name="port_" type="int" visibility="0x02" properties="0x00"/>
+   <attribute name="connected_" type="bool" visibility="0x02" properties="0x00"/>
+   <attribute name="server_addr_" type="sockaddr_in" visibility="0x02" properties="0x00"/>
+   <attribute name="client_addr_" type="sockaddr_in" visibility="0x02" properties="0x00"/>
+   <operation name="WebSocketServer" type="QActive(Q_STATE_CAST(&amp;WebSocketServer::initial)), port_(port), connected_(false)" visibility="0x00" properties="0x00">
+    <documentation>Constructs the WebSocketServer. The default port is 80, however, appropriate permission are required to bind to this port.</documentation>
+    <parameter name="port" type="int"/>
+    <code>/* create a TCP socket */
+socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+
+/* zero out address structures */
+std::memset((char *) &amp;server_addr_, 0, sizeof(server_addr_));
+
+/* initialize server_addr structure */
+server_addr_.sin_family      = AF_INET;
+server_addr_.sin_port        = htons(port_);
+server_addr_.sin_addr.s_addr = INADDR_ANY;
+
+/* attempt to bind to a port -- must be super user if port &lt; 1024 */
+std::cout &lt;&lt; &quot;Binding...&quot;;
+
+if (bind(socket_fd_, (sockaddr*) &amp;server_addr_, sizeof(server_addr_)) &lt; 0)
+{
+    perror(&quot;bind()&quot;);
+    exit(EXIT_FAILURE);
+}
+
+if(fcntl(socket_fd_, F_SETOWN, getpid()) &lt; 0)
+{
+    perror(&quot;F_SETOWN&quot;);
+    exit(EXIT_FAILURE);
+}
+
+if(fcntl(socket_fd_, F_SETFL, O_NONBLOCK | FASYNC) &lt; 0)
+{
+    perror(&quot;F_SETFL&quot;);
+    exit(EXIT_FAILURE);
+}</code>
+   </operation>
+   <operation name="set_connected" type="void" visibility="0x00" properties="0x00">
+    <parameter name="status" type="bool"/>
+    <code>connected_ = status;</code>
+   </operation>
+   <operation name="get_connected" type="bool" visibility="0x00" properties="0x00">
+    <code>return connected_;</code>
+   </operation>
+   <operation name="listen" type="void" visibility="0x00" properties="0x00">
+    <documentation>Wraps listen syscall.</documentation>
+    <code>if(::listen(socket_fd_, BACKLOG_QUEUE) &lt; 0)
+{
+    perror(&quot;listen()&quot;);
+    exit(EXIT_FAILURE);
+}</code>
+   </operation>
+   <operation name="accept" type="bool" visibility="0x00" properties="0x00">
+    <code>/* wait for a client to connect -- blocks while waiting */
+socklen_t client_len = sizeof(client_addr_);
+client_fd_ = ::accept(socket_fd_, (sockaddr *)&amp;client_addr_, &amp;client_len);
+
+if (client_fd_ &lt; 0)
+{
+    std::cerr &lt;&lt; &quot;ERROR: Could not accept new client.&quot; &lt;&lt; std::endl;
+    return false;
+}
+
+/* set async flag */
+if (fcntl(client_fd_, F_SETFL, FASYNC) &lt; 0)
+{
+    std::cerr &lt;&lt; &quot;client_fd_ SETFL: &quot; &lt;&lt; strerror(errno) &lt;&lt; std::endl;
+    exit(EXIT_FAILURE);
+}
+
+/* let this process receive signals on client_fd_ */
+if (fcntl(client_fd_, F_SETOWN, getpid()) &lt; 0)
+{
+    std::cerr &lt;&lt; &quot;client_fd_ SETOWN: &quot; &lt;&lt; strerror(errno) &lt;&lt; std::endl;
+    exit(EXIT_FAILURE);
+}</code>
+   </operation>
+   <operation name="receive" type="WebSocketFrame *" visibility="0x00" properties="0x00">
+    <documentation>Wraps the recv() call. Creates a new WebSocketFrame return its pointers.</documentation>
+    <code>char *buf = new char[BUF_SIZE];
+
+std::memset(buf, 0, BUF_SIZE);
+
+int n = recv(client_fd_, buf, BUF_SIZE, 0);
+
+if (n == 0)
+{
+    // TODO close, cleanup, transition to listening
+    buf[0] = 0x88; // close opcode
+    buf[1] = 0x00;
+    buf[2] = '\0';
+
+    return WebSocketFrame::proc_frame(buf, 2);
+}
+else if(n &lt; 0)
+{
+    perror(NULL);
+    exit(EXIT_FAILURE);
+}
+
+WebSocketFrame *frame =
+    WebSocketFrame::proc_frame(buf, n);
+
+uint64_t len = frame-&gt;get_payload_len();
+
+// cleanup
+delete [] buf;
+
+return frame; // don't forget to dealloc from end point</code>
+   </operation>
+   <operation name="send" type="void" visibility="0x00" properties="0x00">
+    <parameter name="frame" type="WebSocketFrame *"/>
+    <code>// TODO: Frame data
+
+int n = ::send(client_fd_, frame-&gt;get_frame(), 
+    frame-&gt;get_len(), 0);
+
+if (n &lt; 0)
+{
+    std::cout &lt;&lt; &quot;Error sending.&quot; &lt;&lt; std::endl;
+    exit(EXIT_FAILURE);
+}
+else if (n == 0)
+{
+    // ??
+}</code>
+   </operation>
+   <operation name="get_socket_fd" type="int" visibility="0x00" properties="0x00">
+    <documentation>Returns the server socket file descriptor.</documentation>
+    <code>return socket_fd_;</code>
+   </operation>
+   <operation name="get_client_fd" type="int" visibility="0x00" properties="0x00">
+    <code>return client_fd_;</code>
+   </operation>
+   <operation name="close" type="void" visibility="0x00" properties="0x00">
+    <code>::close(client_fd_);
+
+DisconnectedEvt *de
+    = Q_NEW(DisconnectedEvt, DISCONNECTED_SIG);
+
+QP::QF::publish(de);</code>
+   </operation>
+   <operation name="receive_hdr" type="char *" visibility="0x02" properties="0x00">
+    <documentation>Receives the HTTP header from the socket.</documentation>
+    <code>char *buf = new char[BUF_SIZE];
+
+int n = recv(client_fd_, buf, BUF_SIZE, 0);
+
+if (n == -1)
+{
+    perror(&quot;receive_hdr()&quot;);
+    return NULL;
+}
+else if( n == 0 )
+{
+    std::cout &lt;&lt; &quot;Did not receive header.&quot; &lt;&lt; std::endl;
+    return NULL;
+}
+
+return buf;</code>
+   </operation>
+   <operation name="handshake" type="bool" visibility="0x02" properties="0x00">
+    <code>/*
+ * Now, we need to validate the WebSocket connection with client
+ * per the RFC 6455.
+ */
+char * recvd = receive_hdr();
+
+if (recvd == NULL)
+{
+    std::cout &lt;&lt; &quot;Server: Header was null&quot; &lt;&lt; std::endl;
+    return false;
+}
+
+std::cout &lt;&lt; &quot;Server: Received header (&quot;
+    &lt;&lt; std::strlen(recvd) &lt;&lt; &quot;) bytes&quot; &lt;&lt; std::endl;
+
+char s[BUF_SIZE];
+
+std::strcpy(s, recvd);
+
+// dealloc receive buffer
+delete[] recvd;
+
+std::string header(s);
+
+std::cout &lt;&lt; std::endl &lt;&lt; &quot;HTTP Header:&quot; &lt;&lt; std::endl &lt;&lt; header &lt;&lt; std::endl;
+
+/* parse the header */
+
+// FIXME All this does is find the Sec-WebSocket-Key value...
+// TODO verify valid header values
+
+// this next part is definitely hacky and error-prone
+int key_idx = header.find(&quot;Sec-WebSocket-Key:&quot;) + 19;
+std::string str_key = header.substr(key_idx, 24);
+
+std::cout &lt;&lt; &quot;Sec-WebSocket-Key: &quot; &lt;&lt; str_key &lt;&lt; &quot;END&quot; &lt;&lt; std::endl;
+
+// sha-1 key+GUID
+unsigned char hash[24];
+std::memset(hash, 0, 24);
+
+str_key.append(GUID);
+
+SHA1(reinterpret_cast&lt;const unsigned char*&gt;(str_key.c_str()),
+        str_key.length(), hash);
+hash[20] = '\0';
+char * accept_b64 = base64(hash, 20);
+
+std::cout &lt;&lt; &quot;Sec-WebSocket-Accept: &quot; &lt;&lt; accept_b64 &lt;&lt; std::endl;
+
+// send back an Upgrade/Accept header
+std::string accept_hdr(
+        &quot;HTTP/1.1 101 Switching Protocols\r\n&quot;
+        &quot;Upgrade: websocket\r\n&quot;
+        &quot;Connection: Upgrade\r\n&quot;
+        &quot;Sec-WebSocket-Accept: &quot; + std::string(accept_b64) + &quot;\r\n&quot;);
+
+// send accept header
+if (::send(client_fd_, accept_hdr.c_str(), accept_hdr.length(), 0))
+{
+    std::cout &lt;&lt; &quot;Sent accept header.&quot; &lt;&lt; std::endl;
+    return true;
+}
+else
+{
+    return false;
+}
+</code>
+   </operation>
+   <statechart>
+    <initial target="../1">
+     <action>std::cout &lt;&lt; &quot;Server initial transition&quot; &lt;&lt; std::endl;</action>
+     <initial_glyph conn="14,6,4,0,6">
+      <action box="0,-2,13,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="listening">
+     <documentation>The server is listening for an operator (client) to connect.</documentation>
+     <entry brief="setup asynch signal handler">async_setup(); // defined in web_socket_server.cpp
+
+me-&gt;listen();
+
+std::cout &lt;&lt; &quot;Server: Listening...&quot; &lt;&lt; std::endl;</entry>
+     <tran trig="ACCEPT">
+      <action brief="attempt handshake">std::cout &lt;&lt; &quot;Creating socket...&quot; &lt;&lt; std::endl;
+
+me-&gt;accept();
+
+std::cout &lt;&lt; &quot;Attempting handshake...&quot; &lt;&lt; std::endl;
+
+if (me-&gt;handshake())
+{
+    me-&gt;set_connected(true);
+}
+/*
+AcceptEvt:
+
+Create client_fd
+Attempt to read HTTP header
+    Timeout 5 seconds
+    return false
+Parse HTTP header
+    Create HttpHeader object (dictionary)
+Check the following:
+    Verify source (site) is ours
+    Verify resource (GET /rover)
+        TODO: password
+    Get Key
+    Process key
+        accept_key = base64( SHA1(key+GUID))
+    Create HttpResponse
+    Add accept_key to the header
+    Send back header
+    return true
+*/</action>
+      <choice target="../../../2">
+       <guard brief="connected">me-&gt;get_connected()</guard>
+       <action brief="init client async handler">struct sigaction client_action;
+std::memset(&amp;client_action, 0, sizeof(client_action));
+
+client_action.sa_handler = client_handler;
+sigemptyset(&amp;client_action.sa_mask);
+client_action.sa_flags = 0;
+
+if(sigaction(SIGIO, &amp;client_action, NULL) &lt; 0)
+{
+    perror(&quot;sigaction()&quot;);
+    exit(EXIT_FAILURE);
+}</action>
+       <choice_glyph conn="32,20,4,3,3,13">
+        <action box="0,3,13,6"/>
+       </choice_glyph>
+      </choice>
+      <choice target="../..">
+       <guard>else</guard>
+       <action brief="recreate sigaction">std::cout &lt;&lt; &quot;Server: handshake failed&quot; &lt;&lt; std::endl;
+async_setup();</action>
+       <choice_glyph conn="32,20,4,1,-3,-4">
+        <action box="-3,-5,6,2"/>
+       </choice_glyph>
+      </choice>
+      <tran_glyph conn="3,20,3,-1,29">
+       <action box="0,0,16,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="3,12,25,17">
+      <entry box="1,2,22,2"/>
+     </state_glyph>
+    </state>
+    <state name="connected">
+     <documentation>The Apollo Pi is active when in this state. An operator is connected and may send and receive messages.
+
+To send a message to the operator, post a SendEvt to the server with the data (JSON string) as an event parameter. For example:
+
+SendEvt *se = Q_NEW(SendEvt, SEND_SIG);
+se-&gt;data = json_data;
+AO_WebSocketServer-&gt;postFIFO(se);
+
+</documentation>
+     <entry brief="publish connected">std::cout &lt;&lt; &quot;Server: Connected&quot; &lt;&lt; std::endl;
+
+// subscribe to DISCONNECTED_SIG
+me-&gt;subscribe(DISCONNECTED_SIG);
+
+ConnectedEvt *ce;
+
+ce = Q_NEW(ConnectedEvt, CONNECTED_SIG);
+
+std::cout &lt;&lt; &quot;Publishing CONNECTED_SIG&quot; &lt;&lt; std::endl;
+QP::QF::publish(ce);</entry>
+     <exit brief="cleanup and publish disconnected"/>
+     <tran trig="SEND">
+      <action>WebSocketFrame *frame
+    = ((SendEvt *)e)-&gt;get_frame();
+
+// send then dealloc
+me-&gt;send(frame);
+
+((SendEvt *)e)-&gt;dealloc();</action>
+      <tran_glyph conn="45,15,3,-1,13">
+       <action box="0,-2,12,2"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="RECV">
+      <action brief="pass message to dispatcher">WebSocketFrame *frame = me-&gt;receive();
+
+uint64_t payload_len = frame-&gt;get_payload_len();
+char *msg = new char[payload_len];
+
+std::memset(msg, 0, payload_len);
+
+switch (frame-&gt;get_opcode())
+{
+    case TEXT_FRAME: {
+        DispatchEvt *de = Q_NEW(DispatchEvt, DISPATCH_MESSAGE_SIG);
+        std::strcpy(msg, frame-&gt;get_payload());
+        de-&gt;set_message(msg);
+
+        AO_Dispatcher-&gt;postFIFO(de);
+        break;
+    }
+    //case ??: {
+
+  //}
+    default: {
+        std::cout &lt;&lt; &quot;Closing&quot; &lt;&lt; std::endl;
+        me-&gt;close();
+        break;
+    }
+}
+
+delete frame;</action>
+      <tran_glyph conn="45,22,3,-1,13">
+       <action box="0,-2,6,2"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="DISCONNECTED" target="../../1">
+      <tran_glyph conn="45,14,3,1,-17">
+       <action box="-17,-2,15,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="45,6,31,30">
+      <entry box="1,2,21,2"/>
+      <exit box="1,4,26,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="82,41"/>
+   </statechart>
+  </class>
+  <class name="Dispatcher" superclass="qpcpp::QActive">
+   <documentation>This Active Object dispatches control events to the hardware devices (e.g. MotorController, StatusLed, Camera).</documentation>
+   <operation name="Dispatcher" type="QActive(Q_STATE_CAST(&amp;Dispatcher::initial))" visibility="0x00" properties="0x00"/>
+   <operation name="dispatch_message" type="bool" visibility="0x02" properties="0x00">
+    <documentation>Sends json_msg to the appropriate AO.
+
+Returns true on failure.</documentation>
+    <parameter name="target" type="const char *"/>
+    <parameter name="json_msg" type="json_object *"/>
+    <code>if (std::strcmp(target, &quot;MotorController&quot;) == 0)
+{
+    MotorControllerEvt *mce
+        Q_NEW(MotorControllerEvt, UPDATE_MOTORS_SIG);
+
+    int16_t ctrl = json_object_get_int(json_msg);
+
+    std::cout &lt;&lt; &quot;Raw motor control value: 0x&quot; &lt;&lt; std::hex
+        &lt;&lt; ctrl &lt;&lt; std::dec &lt;&lt; std::endl;
+
+    //mce-&gt;set_left_speed ( ctrl &gt;&gt; 8 );
+    mce-&gt;set_right_speed( ctrl );
+
+    std::cout &lt;&lt; &quot;Posting event to MotorController&quot; &lt;&lt; std::endl;
+    AO_MotorController-&gt;postFIFO(mce);
+}
+else if (std::strcmp(target, &quot;Camera&quot;) == 0)
+{
+
+}
+else if (std::strcmp(target, &quot;Console&quot;) == 0)
+{
+
+}
+else
+{
+    char response[21] = &quot;Unrecognized target.&quot;;
+
+    SendEvt * se = Q_NEW(SendEvt, SEND_SIG);
+
+    se-&gt;set_frame(
+        WebSocketFrame::make_frame(
+            response, std::strlen(response)));
+
+    AO_WebSocketServer-&gt;postFIFO(se);
+}</code>
+   </operation>
+   <statechart>
+    <initial target="../1">
+     <initial_glyph conn="30,6,5,0,8,6">
+      <action box="0,-2,6,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="active">
+     <tran trig="DISPATCH_MESSAGE">
+      <action>/* interpret json */
+char *msg = ((DispatchEvt *)e)-&gt;get_message();
+
+std::cout &lt;&lt; &quot;Dispatcher: interpretting '&quot; &lt;&lt; msg &lt;&lt; &quot;'&quot; &lt;&lt; std::endl;
+
+json_object *jobj;
+
+jobj = json_tokener_parse(msg);
+
+// done with message
+delete [] msg;
+
+if (jobj == NULL)
+{
+    char err_msg[BUF_SIZE];
+
+    std::strcpy(err_msg,
+        &quot;{\&quot;tgt\&quot;:\&quot;Console\&quot;,&quot;
+        &quot;\&quot;msg\&quot;:\&quot;error: msg received was not valid JSON\&quot;}&quot;);
+    SendEvt *se = Q_NEW(SendEvt, SEND_SIG);
+    se-&gt;set_frame(
+        WebSocketFrame::make_frame(
+            err_msg, std::strlen(err_msg)));
+
+    AO_WebSocketServer-&gt;postFIFO(se);
+}
+else
+{
+    std::cout &lt;&lt; &quot;tokener_parse() success!&quot; &lt;&lt; std::endl;
+    std::cout
+        &lt;&lt; &quot;Parsed: &quot;
+        &lt;&lt; json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY) &lt;&lt; std::endl;
+
+    // obtain json &quot;tgt&quot; key
+    json_object *json_tgt = json_object_object_get(
+        jobj, &quot;tgt&quot;);
+
+    // only continue if there is a target
+    if (json_tgt != NULL)
+    {
+        // convert object into string
+        const char * tgt = json_object_get_string(json_tgt);
+
+        // obtain &quot;msg&quot; object
+        json_object *json_msg = json_object_object_get(
+            jobj, &quot;msg&quot;);
+
+        me-&gt;dispatch_message(tgt, json_msg);
+    }
+}</action>
+      <tran_glyph conn="19,23,3,-1,17">
+       <action box="0,-2,15,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="19,12,38,27"/>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
+  <class name="WifiDongle" superclass="qpcpp::QActive">
+   <documentation>Represents a Wi-Fi dongle attached to the Raspberry Pi. This Active Object updates its status periodically by sending the Wi-Fi signal quality retreived from an ioctl() on the socket
+
+TODO: Implement a failsafe method for fixing the situation when the device goes out of range.
+
+TODO: The operator should also be notified when the signal quality is getting low.</documentation>
+   <attribute name="updateEvt" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <attribute name="update_ival_" type="int" visibility="0x02" properties="0x00">
+    <documentation>Update interval, in seconds, for sending update message to the operator.</documentation>
+   </attribute>
+   <attribute name="json_status_[BUF_SIZE]" type="char" visibility="0x02" properties="0x00"/>
+   <operation name="WifiDongle" type="QActive(Q_STATE_CAST(&amp;WifiDongle::initial)), updateEvt(UPDATE_WIFI_DONGLE_SIG), update_ival_(5)" visibility="0x00" properties="0x00"/>
+   <operation name="update_status" type="char *" visibility="0x02" properties="0x00">
+    <documentation>Updates the current status of the Wi-Fi connection, and returns a formatted JSON string to send to the operator.</documentation>
+    <code>// obtain signal quality
+// create JSON string
+// return string
+
+iw_statistics stats;
+iwreq req;
+
+std::strcpy(req.ifr_name, IW_NAME);
+req.u.data.pointer = &amp;stats;
+req.u.data.length = sizeof(iw_statistics);
+req.u.data.flags = 1;
+
+// this probably isn't safe...
+int client_fd_
+    = ((WebSocketServer *)AO_WebSocketServer)-&gt;get_socket_fd();
+
+if (ioctl(client_fd_, SIOCGIWSTATS, &amp;req) == -1)
+{
+    perror(&quot;WifiDongle update&quot;);
+    // set json_status_ &quot;msg&quot; : -1
+}
+else
+{
+    if (!(stats.qual.updated &amp; IW_QUAL_QUAL_UPDATED))
+    {
+        return json_status_; // nothing was updated
+    }
+
+    // update status with signal quality
+    std::memset(json_status_, 0, BUF_SIZE);
+
+    // set json_status_ (units may not be dBm)
+    // &quot;msg&quot; : { &quot;qual&quot; : &lt;qual&gt;, &quot;units&quot;: &quot;dBm&quot; }
+
+    std::sprintf(json_status_,
+        &quot;{\&quot;src\&quot;:\&quot;WifiDongle\&quot;,&quot;
+          &quot;\&quot;msg\&quot;:%d}&quot;,
+        stats.qual.qual);
+
+    return json_status_;
+}</code>
+   </operation>
+   <operation name="update" type="void" visibility="0x00" properties="0x00">
+    <code>SendEvt *se =
+    Q_NEW(SendEvt, SEND_SIG);
+
+char *data = update_status();
+
+// Frame the data. Dont forget to dealloc from the Server!
+se-&gt;set_frame(WebSocketFrame::make_frame(data, std::strlen(data)));
+
+// post event direct to server
+AO_WebSocketServer-&gt;postFIFO(se);</code>
+   </operation>
+   <statechart>
+    <initial target="../2">
+     <action brief="subscribe to CONNECTED/DISCONNECTED">me-&gt;subscribe(CONNECTED_SIG);
+me-&gt;subscribe(DISCONNECTED_SIG);
+</action>
+     <initial_glyph conn="9,12,5,0,6,8">
+      <action box="-1,-4,21,4"/>
+     </initial_glyph>
+    </initial>
+    <state name="active">
+     <entry brief="arm_update_event">// arm periodic update
+me-&gt;updateEvt.postEvery((QActive *)me,
+                        me-&gt;update_ival_ * BSP_TICKS_PER_SEC);
+
+// force update
+me-&gt;update();</entry>
+     <exit brief="disarm_update_event">me-&gt;updateEvt.disarm();</exit>
+     <tran trig="UPDATE_WIFI_DONGLE">
+      <action brief="send signal quality">me-&gt;update();</action>
+      <tran_glyph conn="35,34,3,-1,18">
+       <action box="0,-2,17,2"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="DISCONNECTED" target="../../2">
+      <tran_glyph conn="35,33,3,1,-13">
+       <action box="-12,-2,12,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="35,18,43,23">
+      <entry box="1,2,17,2"/>
+      <exit box="1,4,17,2"/>
+     </state_glyph>
+    </state>
+    <state name="inactive">
+     <documentation>Inactive state for when the device is not connected.</documentation>
+     <tran trig="CONNECTED" target="../../1">
+      <tran_glyph conn="22,24,1,3,13">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="8,20,14,16"/>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
+  <class name="Battery" superclass="qpcpp::QActive"/>
+  <class name="StatusLed" superclass="qpcpp::QActive">
+   <documentation>The StatusLed state machine represents the physical LED lights on the rover. When no operator is connected, it is red. When an operator is connected, it is green.</documentation>
+   <operation name="StatusLed" type="QActive(Q_STATE_CAST(&amp;StatusLed::initial))" visibility="0x00" properties="0x00"/>
+   <operation name="red_on" type="void" visibility="0x02" properties="0x00">
+    <code>digitalWrite(7, LOW);</code>
+   </operation>
+   <operation name="green_on" type="void" visibility="0x02" properties="0x00">
+    <code>digitalWrite(7, HIGH);</code>
+   </operation>
+   <statechart>
+    <initial target="../1">
+     <action>me-&gt;subscribe(CONNECTED_SIG);
+me-&gt;subscribe(DISCONNECTED_SIG);
+
+// initialize our pin
+pinMode(7, OUTPUT);</action>
+     <initial_glyph conn="14,9,5,0,8,7">
+      <action box="0,-2,6,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="red">
+     <entry brief="red_on()">std::cout &lt;&lt; &quot;\tStatusLed: red&quot; &lt;&lt; std::endl;
+
+me-&gt;red_on();</entry>
+     <tran trig="CONNECTED" target="../../2">
+      <tran_glyph conn="31,19,1,3,17">
+       <action box="0,-2,10,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="13,16,18,13">
+      <entry box="1,2,13,2"/>
+     </state_glyph>
+    </state>
+    <state name="green">
+     <entry brief="green_on()">std::cout &lt;&lt; &quot;\tStatusLed: green&quot; &lt;&lt; std::endl;
+
+me-&gt;green_on();</entry>
+     <tran trig="DISCONNECTED" target="../../1">
+      <tran_glyph conn="48,25,3,1,-17">
+       <action box="-12,-2,11,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="48,16,18,13">
+      <entry box="1,2,14,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="81,41"/>
+   </statechart>
+  </class>
+  <attribute name="g_update_ival" type="int" visibility="0x00" properties="0x00">
+   <documentation>Use this global to sync periodic updates.</documentation>
+  </attribute>
+ </package>
+ <package name="Rover" stereotype="0x02" namespace="ApolloPi::">
+  <class name="MotorController" superclass="qpcpp::QActive">
+   <attribute name="DIRECTION = 0" type="const int" visibility="0x00" properties="0x00">
+    <documentation>The RPi pin connected to the EN pin on the H-bridge motor buffer.</documentation>
+   </attribute>
+   <attribute name="MOTOR = 1" type="const int" visibility="0x00" properties="0x00"/>
+   <operation name="MotorController" type="QActive(Q_STATE_CAST(&amp;MotorController::initial))" visibility="0x00" properties="0x00"/>
+   <operation name="update_motors" type="void" visibility="0x00" properties="0x00">
+    <documentation>Dispatches control signals to attached motors.</documentation>
+    <parameter name="mce" type="MotorControllerEvt *"/>
+    <code>int8_t speed = mce-&gt;get_right_speed();
+
+if (speed &lt; 0)
+{
+    digitalWrite(DIRECTION, HIGH);
+}
+else
+{
+    digitalWrite(DIRECTION, LOW);
+}
+
+int pwm = 0x7F &amp; (speed&gt;0)?speed:-speed;
+
+// normalize
+pwm = pwm/127.0 * 1023;
+std::cout &lt;&lt; &quot;PWM: &quot; &lt;&lt; pwm &lt;&lt; &quot; (&quot;
+    &lt;&lt; ((pwm/1023.0)*100) &lt;&lt; &quot;%)&quot; &lt;&lt; std::endl;
+
+pwmWrite(MOTOR, (speed&gt;0)?pwm:1023-pwm);
+
+/*
+int8_t left_speed = mce-&gt;get_left_speed();
+int8_t right_speed = mce-&gt;get_right_speed();
+
+// dispatch directed to the motors
+((Motor *)HSM_LeftMotor)-&gt;update(left_speed);
+((Motor *)HSM_RightMotor)-&gt;update(right_speed);
+*/</code>
+   </operation>
+   <operation name="brake" type="void" visibility="0x00" properties="0x00">
+    <code>// disable motor circuit
+digitalWrite(DIRECTION, LOW);
+pwmWrite(MOTOR, 0);
+
+std::cout &lt;&lt; &quot;MOTORS OFF&quot; &lt;&lt; std::endl;</code>
+   </operation>
+   <operation name="enable" type="void" visibility="0x00" properties="0x00">
+    <documentation>Sets the EN pin to HIGH, which enables the motor circuit.</documentation>
+    <code>//digitalWrite(ENABLE, HIGH);</code>
+   </operation>
+   <operation name="init_pins" type="void" visibility="0x00" properties="0x00">
+    <code>pinMode(DIRECTION, OUTPUT);
+pinMode(MOTOR, PWM_OUTPUT);
+
+std::cout &lt;&lt; &quot;Motor pins inititalized.&quot; &lt;&lt; std::endl;
+pwmWrite(MOTOR, 0);</code>
+   </operation>
+   <statechart>
+    <initial target="../1">
+     <initial_glyph conn="30,9,5,0,10,7">
+      <action box="0,-2,6,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="initialized">
+     <entry brief="log status">me-&gt;init_pins();
+std::cout &lt;&lt; &quot;***MotorController: Initialized***&quot; &lt;&lt; std::endl;
+
+HSM_LeftMotor-&gt;init();
+HSM_RightMotor-&gt;init();
+
+me-&gt;enable(); // enable pins</entry>
+     <tran trig="UPDATE_MOTORS">
+      <action>std::cout &lt;&lt; &quot;MotorController: Updating speed.&quot; &lt;&lt; std::endl;
+
+MotorControllerEvt *mce = (MotorControllerEvt *)e;
+
+
+if (mce-&gt;get_right_speed() == 0)
+{
+    me-&gt;brake();
+}
+else
+{
+    me-&gt;update_motors( mce );
+}</action>
+      <tran_glyph conn="27,27,3,-1,20">
+       <action box="0,-2,18,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="27,16,25,19">
+      <entry box="1,2,12,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="78,51"/>
+   </statechart>
+  </class>
+  <class name="Motor" superclass="qpcpp::QHsm">
+   <attribute name="A1" type="int" visibility="0x02" properties="0x00">
+    <documentation>RPi pin connected to the motor controller pin 1A.</documentation>
+   </attribute>
+   <attribute name="A2" type="int" visibility="0x02" properties="0x00">
+    <documentation>RPi Pin connected to the motor controller pin 2A.</documentation>
+   </attribute>
+   <operation name="Motor" type="QHsm(Q_STATE_CAST(&amp;Motor::initial)), A1(a1), A2(a2)" visibility="0x00" properties="0x00">
+    <parameter name="a1" type="int"/>
+    <parameter name="a2" type="int"/>
+   </operation>
+   <operation name="update" type="void" visibility="0x00" properties="0x00">
+    <documentation>Updates the motors operating parameters. This implementation controls speed and direction using signed, 8-bit integers.</documentation>
+    <parameter name="speed" type="int8_t"/>
+    <code>if (speed == 0)
+{
+    brake();
+}
+else if (speed &gt; 0)
+{
+    forward(/*speed*/); // no PWM yet :(
+}
+else
+{
+    backward();
+}</code>
+   </operation>
+   <operation name="brake" type="void" visibility="0x02" properties="0x00">
+    <code>digitalWrite(A1, LOW);
+digitalWrite(A2, LOW);</code>
+   </operation>
+   <operation name="forward" type="void" visibility="0x02" properties="0x00">
+    <code>digitalWrite(A1, HIGH);
+digitalWrite(A2, LOW);</code>
+   </operation>
+   <operation name="backward" type="void" visibility="0x02" properties="0x00">
+    <code>digitalWrite(A1, LOW);
+digitalWrite(A2, HIGH);</code>
+   </operation>
+   <operation name="init_pins" type="void" visibility="0x00" properties="0x00">
+    <code>pinMode(A1, OUTPUT);
+pinMode(A2, OUTPUT);</code>
+   </operation>
+   <statechart>
+    <initial target="../1">
+     <action>me-&gt;init_pins();</action>
+     <initial_glyph conn="29,11,5,0,11,7">
+      <action box="0,-2,6,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="attached">
+     <entry>std::cout &lt;&lt; &quot;------Motor: attached.&quot; &lt;&lt; std::endl;
+me-&gt;brake();</entry>
+     <tran trig="UPDATE_MOTOR_SPEED">
+      <tran_glyph conn="26,30,3,-1,17">
+       <action box="0,-2,18,2"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="26,18,28,19">
+      <entry box="1,2,5,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
+  <class name="Camera" superclass="qpcpp::QHsm">
+   <operation name="Camera" type="QHsm(Q_STATE_CAST(&amp;Camera::initial))" visibility="0x00" properties="0x00"/>
+   <statechart>
+    <initial target="../1">
+     <initial_glyph conn="30,14,5,0,7,7">
+      <action box="0,-2,6,2"/>
+     </initial_glyph>
+    </initial>
+    <state name="initialized">
+     <entry>std::cout &lt;&lt; &quot;------Camera: initialized.&quot; &lt;&lt; std::endl;</entry>
+     <state_glyph node="27,21,21,15">
+      <entry box="1,2,5,2"/>
+     </state_glyph>
+    </state>
+    <state_diagram size="80,50"/>
+   </statechart>
+  </class>
+ </package>
+ <package name="Events" stereotype="0x01" namespace="ApolloPi::">
+  <class name="AcceptEvt" superclass="qpcpp::QEvt">
+   <documentation>This event is posted by a sigaction handler, accept_handler(), when a client tries to connect to the socket.</documentation>
+  </class>
+  <class name="SendEvt" superclass="qpcpp::QEvt">
+   <attribute name="frame_" type="WebSocketFrame *" visibility="0x02" properties="0x00">
+    <documentation>The JSON string of text, encapsulated in a frame, to be sent to the operator.</documentation>
+   </attribute>
+   <operation name="set_frame" type="void" visibility="0x00" properties="0x00">
+    <documentation>Sets the data string for the event.
+
+TODO: Should the buffer be a deep copy, or just a pointer to the original buffer? How will you handle memory management (when is it safe to release the buffer)?</documentation>
+    <parameter name="frame" type="WebSocketFrame *"/>
+    <code>frame_ = frame;</code>
+   </operation>
+   <operation name="get_frame" type="WebSocketFrame *" visibility="0x00" properties="0x00">
+    <code>return frame_;</code>
+   </operation>
+   <operation name="dealloc" type="void" visibility="0x00" properties="0x00">
+    <documentation>Deallocated the char buffer.</documentation>
+    <code>delete frame_;</code>
+   </operation>
+  </class>
+  <class name="RecvEvt" superclass="qpcpp::QEvt"/>
+  <class name="ConnectedEvt" superclass="qpcpp::QEvt"/>
+  <class name="DisconnectedEvt" superclass="qpcpp::QEvt"/>
+  <class name="DispatchEvt" superclass="qpcpp::QEvt">
+   <attribute name="message_" type="char *" visibility="0x02" properties="0x00"/>
+   <operation name="get_message" type="char *" visibility="0x00" properties="0x00">
+    <documentation>Returns the message (should be a JSON string) to be interpretted, then dispatched to the appropriate object.</documentation>
+    <code>return message_;</code>
+   </operation>
+   <operation name="set_message" type="void" visibility="0x00" properties="0x00">
+    <parameter name="msg" type="char *"/>
+    <code>message_ = msg;</code>
+   </operation>
+  </class>
+  <class name="MotorControllerEvt" superclass="qpcpp::QEvt">
+   <documentation>This event contains data for controller motors. The data is interpretted by the MotorController AO.</documentation>
+   <attribute name="left_speed_" type="int8_t" visibility="0x02" properties="0x00">
+    <documentation>Represents the speed and direction of the left motor.</documentation>
+   </attribute>
+   <attribute name="right_speed_" type="int8_t" visibility="0x02" properties="0x00">
+    <documentation>Represents the speed and direction of the right motor.</documentation>
+   </attribute>
+   <operation name="set_left_speed" type="void" visibility="0x00" properties="0x00">
+    <parameter name="value" type="int8_t"/>
+    <code>left_speed_ = value;</code>
+   </operation>
+   <operation name="set_right_speed" type="void" visibility="0x00" properties="0x00">
+    <parameter name="value" type="int8_t"/>
+    <code>right_speed_ = value;</code>
+   </operation>
+   <operation name="get_left_speed" type="int8_t" visibility="0x00" properties="0x00">
+    <code>return left_speed_;</code>
+   </operation>
+   <operation name="get_right_speed" type="int8_t" visibility="0x00" properties="0x00">
+    <code>return right_speed_;</code>
+   </operation>
+  </class>
+ </package>
+ <directory name=".">
+  <directory name="src">
+   <file name="apollo_pi.h">
+    <text>#ifndef apollo_pi_h
+#define apollo_pi_h
+
+#include &quot;qp_port.h&quot;
+#include &quot;web_socket_frame.h&quot;
+
+#include &lt;netinet/in.h&gt;
+#include &lt;json/json.h&gt;
+
+namespace ApolloPi {
+
+#define SERVER_QUEUE_SIZE 50     // FIXME: some of these are arbitrarily large
+#define STATUS_LED_QUEUE_SIZE 5
+#define DISPATCHER_QUEUE_SIZE 50
+#define WIFI_DONGLE_QUEUE_SIZE 10
+#define SMALL_POOL_SIZE 50
+
+#define BACKLOG_QUEUE 0
+#define BUF_SIZE 1024   // 1 KB
+
+/* wireless interface name */
+#define IW_NAME &quot;wlan0&quot;
+
+enum ApolloPiSignals {
+    CONNECTED_SIG = QP::Q_USER_SIG,
+    DISCONNECTED_SIG,
+    MAX_PUB_SIG,
+    ACCEPT_SIG,
+    SEND_SIG,
+    RECV_SIG,
+    DISPATCH_MESSAGE_SIG,
+    UPDATE_WIFI_DONGLE_SIG,
+    UPDATE_MOTORS_SIG,
+    UPDATE_MOTOR_SPEED_SIG,
+    TOGGLE_HEADLIGHTS_SIG,
+    MAX_SIG
+};
+
+/* server async handler function */
+void connect_handler(int signum);
+
+/* client IO handler */
+void client_handler(int signum);
+
+/* AOs */
+$declare(Core::WebSocketServer)
+$declare(Core::Dispatcher)
+$declare(Core::WifiDongle)
+$declare(Core::StatusLed)
+
+/* Events */
+$declare(Events::AcceptEvt)
+$declare(Events::SendEvt)
+$declare(Events::RecvEvt)
+$declare(Events::ConnectedEvt)
+$declare(Events::DisconnectedEvt)
+$declare(Events::DispatchEvt)
+$declare(Events::MotorControllerEvt)
+
+/* opaque pointer to AOs */
+extern QP::QActive * const AO_WebSocketServer;
+extern QP::QActive * const AO_StatusLed;
+extern QP::QActive * const AO_Dispatcher;
+extern QP::QActive * const AO_WifiDongle;
+
+
+}
+
+#endif /* apollo_pi_h */</text>
+   </file>
+   <file name="rover.h">
+    <text>#ifndef rover_h
+#define rover_h
+
+#include &quot;qp_port.h&quot;
+#include &quot;apollo_pi.h&quot;
+
+namespace ApolloPi {
+
+/* AOs */
+$declare(Rover::MotorController)
+
+/* HSMs */
+$declare(Rover::Motor)
+$declare(Rover::Camera)
+
+extern QP::QActive * const AO_MotorController;
+extern QP::QHsm    * const HSM_Camera;
+
+} /* namespace ApolloPi */
+
+#endif /* rover_h */</text>
+   </file>
+   <file name="bsp.h">
+    <text>#ifndef bsp_h
+#define bsp_h
+
+#include &lt;cstdint&gt;
+
+namespace ApolloPi {
+
+uint32_t const BSP_TICKS_PER_SEC = static_cast&lt;uint32_t&gt;(1000);
+
+} /* namespace ApolloPi */
+
+#endif /* bsp_h */</text>
+   </file>
+   <file name="rover.cpp">
+    <text>/**
+ *
+ */
+
+#include &quot;qp_port.h&quot;   // QP framework
+#include &quot;apollo_pi.h&quot; // APi framework
+#include &quot;rover.h&quot;     // application
+#include &quot;bsp.h&quot;       // board support package
+
+#include &lt;iostream&gt;
+
+#include &lt;wiringPi.h&gt;
+
+namespace ApolloPi {
+
+/* Local scope -- Event queues */
+static QP::QEvent const * l_serverQueueSto[SERVER_QUEUE_SIZE];
+static QP::QEvent const * l_statusLedQueueSto[STATUS_LED_QUEUE_SIZE];
+static QP::QEvent const * l_dispatcherQueueSto[DISPATCHER_QUEUE_SIZE];
+static QP::QEvent const * l_wifiDongleQueueSto[WIFI_DONGLE_QUEUE_SIZE];
+
+/* Dynamic Event Allocation Pools */
+static SendEvt l_smlPoolSto[SMALL_POOL_SIZE];
+
+/* no publish-subscribe implementation yet */
+static QP::QSubscrList l_subscrSto[MAX_PUB_SIG];
+
+extern &quot;C&quot; int main(int argc, char *argv[]) {
+    /* initialize WiringPi */
+    std::cout &lt;&lt; &quot;Initialized WiringPi&quot; &lt;&lt; std::endl;
+    wiringPiSetup();
+
+    /* initialize the framework */
+    QP::QF::init();
+
+    QP::QF::poolInit(l_smlPoolSto, sizeof(l_smlPoolSto), sizeof(l_smlPoolSto[0]));
+
+    /* initialize publish-subscribe event mechanism */
+    QP::QF::psInit(l_subscrSto, Q_DIM(l_subscrSto));
+
+    /* start all AOs, starting with the highest priority object */
+    int priority = QF_MAX_ACTIVE;
+
+    AO_WebSocketServer-&gt;start(priority--,
+                              l_serverQueueSto,
+                              Q_DIM(l_serverQueueSto),
+                              (void *)0, 0,
+                              (QP::QEvent *)0);
+    std::cout &lt;&lt; &quot;***Server started***&quot; &lt;&lt; std::endl;
+
+    AO_Dispatcher-&gt;start(     priority--,
+                              l_dispatcherQueueSto,
+                              Q_DIM(l_dispatcherQueueSto),
+                              (void *)0, 0,
+                              (QP::QEvent *)0);
+    std::cout &lt;&lt; &quot;***Dispatcher started***&quot; &lt;&lt; std::endl;
+
+    AO_MotorController-&gt;start(priority--,
+                              l_wifiDongleQueueSto,
+                              Q_DIM(l_wifiDongleQueueSto),
+                              (void *)0, 0,
+                              (QP::QEvent *)0);
+    std::cout &lt;&lt; &quot;***MotorController started***&quot; &lt;&lt; std::endl;
+
+    AO_WifiDongle-&gt;start(     priority--,
+                              l_wifiDongleQueueSto,
+                              Q_DIM(l_wifiDongleQueueSto),
+                              (void *)0, 0,
+                              (QP::QEvent *)0);
+    std::cout &lt;&lt; &quot;***WifiDongle started***&quot; &lt;&lt; std::endl;
+
+    AO_StatusLed-&gt;start(      priority--,
+                              l_statusLedQueueSto,
+                              Q_DIM(l_statusLedQueueSto),
+                              (void *)0, 0,
+                              (QP::QEvent *)0);
+    std::cout &lt;&lt; &quot;***StatusLed started***&quot; &lt;&lt; std::endl;
+
+    /* intialize any F/Hsms */
+    HSM_Camera-&gt;init();
+
+    /* run the application according to statemachine semantics */
+    std::cout &lt;&lt; std::endl &lt;&lt; &quot;Running Apollo Pi Rover!&quot; &lt;&lt; std::endl &lt;&lt; std::endl;
+    return QP::QF::run();
+}
+
+} /* namespace ApolloPi */</text>
+   </file>
+   <file name="bsp.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;apollo_pi.h&quot;
+#include &quot;bsp.h&quot;
+
+#include &lt;cstdlib&gt;
+#include &lt;iostream&gt;
+
+#include &lt;stdio.h&gt;
+
+using namespace std;
+
+namespace ApolloPi {
+
+
+
+} /* namespace ApolloPi */
+
+namespace QP {
+
+extern &quot;C&quot; void Q_onAssert(char const Q_ROM * const Q_ROM_VAR file, int line) {
+    fprintf(stderr, &quot;Assertion failed in %s, line %d&quot;, file, line);
+    exit(EXIT_FAILURE);
+}
+
+void QF::onStartup(void)
+{
+    QF_setTickRate(ApolloPi::BSP_TICKS_PER_SEC);
+}
+
+void QF::onCleanup(void)
+{
+    // TODO
+    ((ApolloPi::WebSocketServer *)ApolloPi::AO_WebSocketServer)-&gt;close();
+    QF::publish(Q_NEW(ApolloPi::DisconnectedEvt, ApolloPi::DISCONNECTED_SIG));
+}
+
+void QF_onClockTick(void)
+{
+    QF::TICK((void *)0);
+}
+
+} /* namespace QP */</text>
+   </file>
+   <file name="web_socket_server.cpp">
+    <text>#include &quot;apollo_pi.h&quot; // for declaration
+#include &quot;qp_port.h&quot;
+#include &quot;web_socket_frame.h&quot;
+
+#include &lt;iostream&gt;
+#include &lt;cstring&gt;
+#include &lt;cstdlib&gt;
+
+#include &lt;sys/socket.h&gt;
+#include &lt;netinet/in.h&gt;
+#include &lt;arpa/inet.h&gt;
+#include &lt;signal.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;openssl/sha.h&gt;
+#include &lt;openssl/hmac.h&gt;
+#include &lt;openssl/evp.h&gt;
+#include &lt;openssl/bio.h&gt;
+#include &lt;openssl/buffer.h&gt;
+#include &lt;sys/epoll.h&gt;
+
+namespace ApolloPi {
+
+#define GUID &quot;258EAFA5-E914-47DA-95CA-C5AB0DC85B11&quot;
+
+/* sets up asynch signal handler */
+void async_setup()
+{
+    struct sigaction connect_action;
+
+    std::memset(&amp;connect_action, 0, sizeof(connect_action));
+
+    connect_action.sa_handler = connect_handler;
+    sigemptyset(&amp;connect_action.sa_mask);
+    connect_action.sa_flags = 0;
+
+    if(sigaction(SIGIO, &amp;connect_action, NULL) &lt; 0)
+    {
+        perror(&quot;sigaction()&quot;);
+        exit(EXIT_FAILURE);
+    }
+}
+
+char * base64(const unsigned char * input, int length)
+{
+    BIO *bmem, *b64;
+    BUF_MEM *bptr;
+    b64 = BIO_new(BIO_f_base64());
+    bmem = BIO_new(BIO_s_mem());
+    b64 = BIO_push(b64, bmem);
+    BIO_write(b64, input, length);
+    BIO_flush(b64);
+    BIO_get_mem_ptr(b64, &amp;bptr);
+
+    char * buff = (char *)malloc(bptr-&gt;length+1);
+    memcpy(buff, bptr-&gt;data, bptr-&gt;length);
+    buff[bptr-&gt;length] = 0;
+
+    BIO_free_all(b64);
+
+    return buff;
+}
+
+static WebSocketServer l_server(80); // the server Active Object
+QP::QActive * const AO_WebSocketServer = (QP::QActive *)&amp;l_server;
+
+$define(Core::WebSocketServer)
+
+$define(Events::SendEvt)
+
+void connect_handler(int signum)
+{
+    std::cout &lt;&lt; &quot;A client is trying to connect...&quot; &lt;&lt; std::endl;
+    AcceptEvt *ae = Q_NEW(AcceptEvt, ACCEPT_SIG);
+
+    AO_WebSocketServer-&gt;postFIFO(ae);
+}
+
+void client_handler(int signum)
+{
+    std::cout &lt;&lt; &quot;SIGIO on client socket&quot; &lt;&lt; std::endl;
+
+    // assume input event is on client socket
+    RecvEvt *re = Q_NEW(RecvEvt, RECV_SIG);
+    AO_WebSocketServer-&gt;postFIFO(re);
+}
+
+}</text>
+   </file>
+   <file name="status_led.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;apollo_pi.h&quot;
+
+#include &lt;wiringPi.h&gt;
+#include &lt;iostream&gt;
+
+namespace ApolloPi {
+
+$define(Core::StatusLed)
+
+static StatusLed l_statusLed;
+QP::QActive * const AO_StatusLed = (QP::QActive *)&amp;l_statusLed;
+
+}</text>
+   </file>
+   <file name="dispatcher.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;apollo_pi.h&quot;
+#include &quot;rover.h&quot;
+
+#include &lt;json/json.h&gt;
+#include &lt;iostream&gt;
+#include &lt;cstring&gt;
+
+namespace ApolloPi {
+
+$define(Core::Dispatcher)
+$define(Events::DispatchEvt)
+
+static Dispatcher l_dispatcher;
+QP::QActive * const AO_Dispatcher = (QP::QActive *)&amp;l_dispatcher;
+
+} /* namespace ApolloPi */</text>
+   </file>
+   <file name="wifi_dongle.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;bsp.h&quot;
+#include &quot;apollo_pi.h&quot;
+
+#include &lt;linux/wireless.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;iostream&gt;
+#include &lt;cstring&gt;
+
+namespace ApolloPi {
+
+$define(Core::WifiDongle)
+
+static WifiDongle l_dongle; // the dongle Active Object
+QP::QActive * const AO_WifiDongle = (QP::QActive *)&amp;l_dongle;
+
+} /* namespace ApolloPi */</text>
+   </file>
+   <file name="motor_controller.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;rover.h&quot;
+
+#include &lt;wiringPi.h&gt;
+#include &lt;iostream&gt;
+
+namespace ApolloPi {
+
+static MotorController l_motorController;
+QP::QActive * const AO_MotorController = (QP::QActive *)&amp;l_motorController;
+
+// Motor state machines
+static Motor l_leftMotor(2, 3),
+             l_rightMotor(4, 5);
+
+// opaque pointers
+QP::QHsm * const HSM_LeftMotor = &amp;l_leftMotor;
+QP::QHsm * const HSM_RightMotor = &amp;l_rightMotor;
+
+$define(Rover::MotorController)
+$define(Events::MotorControllerEvt)
+
+} /* namespace Rover */</text>
+   </file>
+   <file name="motor.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;rover.h&quot;
+#include &lt;wiringPi.h&gt;
+
+#include &lt;iostream&gt;
+
+namespace ApolloPi {
+
+$define(Rover::Motor)
+
+} /* namespace Rover */
+</text>
+   </file>
+   <file name="camera.cpp">
+    <text>#include &quot;qp_port.h&quot;
+#include &quot;rover.h&quot;
+
+#include &lt;iostream&gt;
+
+namespace ApolloPi {
+
+$define(Rover::Camera)
+
+static Camera l_camera;
+QP::QHsm * const HSM_Camera = &amp;l_camera;
+
+} /* namespace Rover */
+</text>
+   </file>
+  </directory>
+  <file name="Makefile">
+   <text># Apollo Pi Rover Makefile
+# TODO: make this file more useful, ie. clean, use variables, etc.
+
+AVRDUDE := avrdude
+AVRCC   := avr-g++
+
+INCLUDE := -I${QPCPP}/include -I${QPCPP}/ports/posix/gnu
+LINK    := -lqp -lpthread -ljson -lssl -lcrypto -lwiringPi
+LIBS    := -L${QPCPP}/ports/posix/gnu/dbg
+
+all:
+    arm-bcm2708hardfp-linux-gnueabi-g++ src/*.cpp ${INCLUDE} ${LIBS} ${LINK} -o bin/apollo-pi -std=c++11
+
+#TODO compile objects, then link
+
+#TODO clean rule</text>
+  </file>
+ </directory>
+</model>

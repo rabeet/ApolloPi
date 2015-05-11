@@ -1,0 +1,4 @@
+#!/bin/bash
+
+scp bin/apollo-pi apollo@apollo-pi.zapto.org:/home/apollo/apollo-pi
+
